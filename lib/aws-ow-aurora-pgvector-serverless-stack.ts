@@ -2,12 +2,17 @@ import * as cdk from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as rds from 'aws-cdk-lib/aws-rds';
 import * as kms from 'aws-cdk-lib/aws-kms';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import { NagSuppressions } from 'cdk-nag';
 import { Construct } from 'constructs';
 import { AuroraClusterInstanceType, AuroraPort, AwsOwAuroraPgvectorServerlessStackProps } from './AwsOwAuroraPgvectorServerlessStackProps';
 import { SecretValue } from 'aws-cdk-lib';
 import { parseVpcSubnetType } from '../utils/vpc-type-parser';
 import { SubnetSelection } from 'aws-cdk-lib/aws-ec2';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as lambda_python from '@aws-cdk/aws-lambda-python-alpha';
+import * as events from 'aws-cdk-lib/aws-events';
+import * as targets from 'aws-cdk-lib/aws-events-targets';
 
 export class AwsOwAuroraPgvectorServerlessStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: AwsOwAuroraPgvectorServerlessStackProps) {
@@ -166,6 +171,26 @@ export class AwsOwAuroraPgvectorServerlessStack extends cdk.Stack {
       },
     ]);
 
+    // Create IAM role for the Lambda function
+    const createExtensionLambdaRole = new iam.Role(this, `${props.resourcePrefix}-create-extension-lambda-role`, {
+      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+      description: 'IAM role for createExtensionLambda',
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaVPCAccessExecutionRole'),
+      ],
+    });
+
+    // Grant Secrets Manager read permissions to the Lambda role
+    createExtensionLambdaRole.addToPolicy(new iam.PolicyStatement({
+      actions: [
+        'secretsmanager:GetSecretValue',
+        'secretsmanager:DescribeSecret',
+      ],
+      resources: [auroraDatabaseCluster.secret?.secretArn || ''],
+    }));
+
+    
+
     new cdk.CfnOutput(this, `${props.resourcePrefix}-aurora-pgvector-serverless-endpoint`, {
       value: auroraDatabaseCluster.clusterEndpoint.hostname,
       description: 'Aurora Endpoint',
@@ -207,6 +232,67 @@ export class AwsOwAuroraPgvectorServerlessStack extends cdk.Stack {
       value: auroraDatabaseCluster.clusterArn,
       description: 'Aurora Database Cluster ARN',
       exportName: `${props.resourcePrefix}-aurora-pgvector-serverless-database-cluster-arn`,
+    });
+
+    // Create a security group for the Lambda function
+    const lambdaSecurityGroup = new ec2.SecurityGroup(this, `${props.resourcePrefix}-lambda-security-group`, {
+      vpc,
+      allowAllOutbound: true, // Lambda needs to reach Secrets Manager and RDS
+      description: 'Security group for Lambda function to connect to Aurora',
+    });
+    lambdaSecurityGroup.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+
+    // Allow the Lambda security group to connect to the Aurora security group
+    auroraSecurityGroup.addIngressRule(
+      lambdaSecurityGroup,
+      ec2.Port.tcp(auroraPort),
+      'Allow Lambda to connect to Aurora'
+    );
+
+    // todo create lambda with its subnets
+
+    // Create the Lambda function
+    const createExtensionLambda = new lambda_python.PythonFunction(this, `${props.resourcePrefix}-create-extension-lambda`, {
+      entry: 'src/lambdas/create_pgvector_extension',
+      runtime: lambda.Runtime.PYTHON_3_13,
+      index: 'index.py',
+      handler: 'handler',
+      vpc,
+      securityGroups: [lambdaSecurityGroup],
+      role: createExtensionLambdaRole,
+      environment: {
+        DB_SECRET_ARN: auroraDatabaseCluster.secret?.secretArn || '',
+        DB_HOST: auroraDatabaseCluster.clusterEndpoint.hostname,
+        DB_NAME: props.defaultDatabaseName,
+        VECTOR_DIMENTIONS: props.vectorDimensions,
+      },
+      timeout: cdk.Duration.minutes(5),
+    });
+
+    // Create an EventBridge rule to trigger the Lambda when a new writer instance is added
+    new events.Rule(this, `${props.resourcePrefix}-aurora-instance-scaling-event`, {
+      eventPattern: {
+        source: ['aws.rds'],
+        detailType: ['RDS DB Instance Event'],
+        detail: {
+          Message: [
+            {
+              prefix: 'Database cluster created',
+            },
+            {
+              prefix: 'DB instance created',
+            },
+            {
+              prefix: 'DB instance started',
+            },
+            {
+              prefix: 'DB instance available',
+            },
+          ],
+          SourceArn: [auroraDatabaseCluster.clusterArn],
+        },
+      },
+      targets: [new targets.LambdaFunction(createExtensionLambda)],
     });
   }
 }

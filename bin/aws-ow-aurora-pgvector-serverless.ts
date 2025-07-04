@@ -36,6 +36,7 @@ checkEnvVariables('APP_NAME',
     'STORAGE_TYPE',
     'MONITORING_INTERVAL',
     'CLUSTER_SCALABILITY_TYPE',
+    'VECTOR_DIMENTIONS',
 );
 
 const { CDK_DEFAULT_ACCOUNT: account } = process.env;
@@ -78,6 +79,7 @@ const stackProps: AwsOwAuroraPgvectorServerlessStackProps = {
     storageType: parseStorageTypeFromEnv(),
     monitoringInterval: Number(process.env.MONITORING_INTERVAL!),
     clusterScalabilityType: parseClusterScalabilityTypeFromEnv(),
+    vectorDimensions: process.env.VECTOR_DIMENTIONS!,
 };
 new AwsOwAuroraPgvectorServerlessStack(app, `${owner}-${deployEnvironment}-AwsOwAuroraPgvectorServerlessStack`, {
     ...stackProps,
