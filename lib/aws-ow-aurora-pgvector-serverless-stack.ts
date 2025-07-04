@@ -249,15 +249,14 @@ export class AwsOwAuroraPgvectorServerlessStack extends cdk.Stack {
       'Allow Lambda to connect to Aurora'
     );
 
-    // todo create lambda with its subnets
-
     // Create the Lambda function
-    const createExtensionLambda = new lambda_python.PythonFunction(this, `${props.resourcePrefix}-create-extension-lambda`, {
+    const createExtensionLambdaFn = new lambda_python.PythonFunction(this, `${props.resourcePrefix}-create-extension-lambda`, {
       entry: 'src/lambdas/create_pgvector_extension',
       runtime: lambda.Runtime.PYTHON_3_13,
       index: 'index.py',
       handler: 'handler',
       vpc,
+      vpcSubnets: vpcSubnetSelection,
       securityGroups: [lambdaSecurityGroup],
       role: createExtensionLambdaRole,
       environment: {
@@ -267,7 +266,7 @@ export class AwsOwAuroraPgvectorServerlessStack extends cdk.Stack {
         VECTOR_DIMENTIONS: props.vectorDimensions,
       },
       timeout: cdk.Duration.minutes(5),
-    });
+    }); // todo improve lambda function with logging and error handling
 
     // Create an EventBridge rule to trigger the Lambda when a new writer instance is added
     new events.Rule(this, `${props.resourcePrefix}-aurora-instance-scaling-event`, {
@@ -292,7 +291,7 @@ export class AwsOwAuroraPgvectorServerlessStack extends cdk.Stack {
           SourceArn: [auroraDatabaseCluster.clusterArn],
         },
       },
-      targets: [new targets.LambdaFunction(createExtensionLambda)],
+      targets: [new targets.LambdaFunction(createExtensionLambdaFn)],
     });
   }
 }
