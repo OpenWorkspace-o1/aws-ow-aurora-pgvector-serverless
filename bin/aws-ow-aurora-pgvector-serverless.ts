@@ -14,7 +14,7 @@ import { AwsOwAuroraPgvectorServerlessStackProps } from '../lib/AwsOwAuroraPgvec
 import { AwsOwAuroraPgvectorServerlessStack } from '../lib/aws-ow-aurora-pgvector-serverless-stack';
 
 dotenv.config(); // Load environment variables from .env file
-const app = new cdk.App();
+export const app = new cdk.App();
 
 const appAspects = Aspects.of(app);
 
@@ -58,10 +58,6 @@ appAspects.add(new ApplyTags({
 
 const stackProps: AwsOwAuroraPgvectorServerlessStackProps = {
     resourcePrefix: `${appName}-${deployEnvironment}`,
-    env: {
-        region: cdkRegion,
-        account,
-    },
     deployRegion: cdkRegion,
     deployEnvironment,
     appName,
@@ -83,6 +79,7 @@ const stackProps: AwsOwAuroraPgvectorServerlessStackProps = {
 };
 new AwsOwAuroraPgvectorServerlessStack(app, `${owner}-${deployEnvironment}-AwsOwAuroraPgvectorServerlessStack`, {
     ...stackProps,
+    env: { account, region: cdkRegion },
     stackName: `${owner}-${deployEnvironment}-AwsOwAuroraPgvectorServerlessStack`,
     description: `AwsOwAuroraPgvectorServerlessStack for ${appName} in ${cdkRegion} ${deployEnvironment}.`,
 });
