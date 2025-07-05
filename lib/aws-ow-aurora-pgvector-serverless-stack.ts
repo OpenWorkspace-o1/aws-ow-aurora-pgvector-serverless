@@ -122,7 +122,7 @@ export class AwsOwAuroraPgvectorServerlessStack extends cdk.Stack {
       writer: rds.ClusterInstance.serverlessV2(AuroraClusterInstanceType.Writer),
       readers: [
         rds.ClusterInstance.serverlessV2(AuroraClusterInstanceType.Reader, {
-          scaleWithWriter: true,
+          scaleWithWriter: false,
         }),
       ],
       storageEncrypted: true,
