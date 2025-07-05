@@ -41,8 +41,10 @@ export interface AwsOwAuroraPgvectorServerlessStackProps extends StackProps, Aws
     readonly monitoringInterval: number;
     /** Type of cluster scalability configuration */
     readonly clusterScalabilityType: ClusterScalabilityType;
-    /** Vector dimensions for pgvector extension */
-    readonly vectorDimensions: string;
+    /** Driver for the Aurora PostgreSQL instance */
+    readonly pgvectorDriver: string;
+    /** Dimensions of the embedding model */
+    readonly embeddingModelDimensions: string;
 }
 
 /** Supported Aurora database engine types */

@@ -6,13 +6,15 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import { NagSuppressions } from 'cdk-nag';
 import { Construct } from 'constructs';
 import { AuroraClusterInstanceType, AuroraPort, AwsOwAuroraPgvectorServerlessStackProps } from './AwsOwAuroraPgvectorServerlessStackProps';
-import { SecretValue } from 'aws-cdk-lib';
+import { Duration, SecretValue } from 'aws-cdk-lib';
 import { parseVpcSubnetType } from '../utils/vpc-type-parser';
 import { SubnetSelection } from 'aws-cdk-lib/aws-ec2';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as lambda_python from '@aws-cdk/aws-lambda-python-alpha';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
+import * as path from 'path';
+import { PythonFunction } from '@aws-cdk/aws-lambda-python-alpha';
 
 export class AwsOwAuroraPgvectorServerlessStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: AwsOwAuroraPgvectorServerlessStackProps) {
@@ -189,8 +191,6 @@ export class AwsOwAuroraPgvectorServerlessStack extends cdk.Stack {
       resources: [auroraDatabaseCluster.secret?.secretArn || ''],
     }));
 
-    
-
     new cdk.CfnOutput(this, `${props.resourcePrefix}-aurora-pgvector-serverless-endpoint`, {
       value: auroraDatabaseCluster.clusterEndpoint.hostname,
       description: 'Aurora Endpoint',
@@ -235,38 +235,61 @@ export class AwsOwAuroraPgvectorServerlessStack extends cdk.Stack {
     });
 
     // Create a security group for the Lambda function
-    const lambdaSecurityGroup = new ec2.SecurityGroup(this, `${props.resourcePrefix}-lambda-security-group`, {
+    const lambdaFnSecGrp = new ec2.SecurityGroup(this, `${props.resourcePrefix}-lambda-security-group`, {
       vpc,
       allowAllOutbound: true, // Lambda needs to reach Secrets Manager and RDS
       description: 'Security group for Lambda function to connect to Aurora',
     });
-    lambdaSecurityGroup.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+    lambdaFnSecGrp.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
 
     // Allow the Lambda security group to connect to the Aurora security group
     auroraSecurityGroup.addIngressRule(
-      lambdaSecurityGroup,
+      lambdaFnSecGrp,
       ec2.Port.tcp(auroraPort),
       'Allow Lambda to connect to Aurora'
     );
 
-    // Create the Lambda function
-    const createExtensionLambdaFn = new lambda_python.PythonFunction(this, `${props.resourcePrefix}-create-extension-lambda`, {
-      entry: 'src/lambdas/create_pgvector_extension',
-      runtime: lambda.Runtime.PYTHON_3_13,
-      index: 'index.py',
-      handler: 'handler',
-      vpc,
-      vpcSubnets: vpcSubnetSelection,
-      securityGroups: [lambdaSecurityGroup],
-      role: createExtensionLambdaRole,
+    // Create KMS Key for encryption with automatic rotation
+    const environmentEncryptionKmsKey = new kms.Key(this, `${props.resourcePrefix}-environmentEncryptionKmsKey`, {
+      enabled: true,
+      enableKeyRotation: true,
+      rotationPeriod: Duration.days(90),
+      description: 'Key for encrypting environment variables',
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    // Function to initialize the pgvector extension on the RDS instance
+    const rdsPgExtensionInitFn = new PythonFunction(this, `${props.resourcePrefix}-rdsPgExtensionInitFn`, {
+      runtime: cdk.aws_lambda.Runtime.PYTHON_3_13,
+      entry: path.join(__dirname, '../src/lambdas/create-pgvector-extension'),
+      index: "index.py",
+      handler: "handler",
+      architecture: cdk.aws_lambda.Architecture.ARM_64,
+      memorySize: 1024,
+      timeout: cdk.Duration.seconds(60),
+      logGroup: new cdk.aws_logs.LogGroup(this, `${props.resourcePrefix}-rdsPgExtensionInitFn-LogGroup`, {
+          logGroupName: `${props.resourcePrefix}-rdsPgExtensionInitFn-LogGroup`,
+          removalPolicy: cdk.RemovalPolicy.DESTROY,
+          retention: cdk.aws_logs.RetentionDays.ONE_WEEK,
+      }),
       environment: {
-        DB_SECRET_ARN: auroraDatabaseCluster.secret?.secretArn || '',
-        DB_HOST: auroraDatabaseCluster.clusterEndpoint.hostname,
-        DB_NAME: props.defaultDatabaseName,
-        VECTOR_DIMENTIONS: props.vectorDimensions,
+          DB_NAME: props.defaultDatabaseName,
+          DB_USER: props.rdsUsername,
+          DB_HOST: auroraDatabaseCluster.clusterEndpoint.hostname,
+          DB_PORT: auroraPort.toString(),
+          DB_PASSWORD: props.rdsPassword,
+          PGVECTOR_DRIVER: props.pgvectorDriver,
+          EMBEDDING_MODEL_DIMENSIONS: props.embeddingModelDimensions,
       },
-      timeout: cdk.Duration.minutes(5),
-    }); // todo improve lambda function with logging and error handling
+      environmentEncryption: environmentEncryptionKmsKey,
+      role: createExtensionLambdaRole,
+      vpc: vpc,
+      securityGroups: [lambdaFnSecGrp],
+      vpcSubnets: vpcSubnetSelection,
+      logRemovalPolicy: cdk.RemovalPolicy.DESTROY,
+      retryAttempts: 2,
+    });
+    rdsPgExtensionInitFn.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
 
     // Create an EventBridge rule to trigger the Lambda when a new writer instance is added
     new events.Rule(this, `${props.resourcePrefix}-aurora-instance-scaling-event`, {
@@ -291,7 +314,7 @@ export class AwsOwAuroraPgvectorServerlessStack extends cdk.Stack {
           SourceArn: [auroraDatabaseCluster.clusterArn],
         },
       },
-      targets: [new targets.LambdaFunction(createExtensionLambdaFn)],
+      targets: [new targets.LambdaFunction(rdsPgExtensionInitFn)],
     });
   }
 }

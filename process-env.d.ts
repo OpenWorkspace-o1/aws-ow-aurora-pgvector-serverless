@@ -18,5 +18,7 @@ declare module NodeJS {
         STORAGE_TYPE: string;
         MONITORING_INTERVAL: string;
         CLUSTER_SCALABILITY_TYPE: string;
+        EMBEDDING_MODEL_DIMENSIONS: string;
+        PGVECTOR_DRIVER: string;
     }
 }
