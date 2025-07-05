@@ -9,8 +9,6 @@ import { AuroraClusterInstanceType, AuroraPort, AwsOwAuroraPgvectorServerlessSta
 import { Duration, SecretValue } from 'aws-cdk-lib';
 import { parseVpcSubnetType } from '../utils/vpc-type-parser';
 import { SubnetSelection } from 'aws-cdk-lib/aws-ec2';
-import * as lambda from 'aws-cdk-lib/aws-lambda';
-import * as lambda_python from '@aws-cdk/aws-lambda-python-alpha';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
 import * as path from 'path';
@@ -270,7 +268,7 @@ export class AwsOwAuroraPgvectorServerlessStack extends cdk.Stack {
       logGroup: new cdk.aws_logs.LogGroup(this, `${props.resourcePrefix}-rdsPgExtensionInitFn-LogGroup`, {
           logGroupName: `${props.resourcePrefix}-rdsPgExtensionInitFn-LogGroup`,
           removalPolicy: cdk.RemovalPolicy.DESTROY,
-          retention: cdk.aws_logs.RetentionDays.ONE_WEEK,
+          retention: cdk.aws_logs.RetentionDays.ONE_MONTH,
       }),
       environment: {
           DB_NAME: props.defaultDatabaseName,
