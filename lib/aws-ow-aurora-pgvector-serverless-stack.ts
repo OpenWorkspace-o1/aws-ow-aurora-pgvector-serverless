@@ -55,7 +55,7 @@ export class AwsOwAuroraPgvectorServerlessStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    const auroraKmsKey = new kms.Key(this, `${props.resourcePrefix}-aurora-pgvector-serverless-kms-key`, {
+    const auroraStorageEncryptionKmsKey = new kms.Key(this, `${props.resourcePrefix}-aurora-pgvector-serverless-storage-encryption-kms-key`, {
       enabled: true,
       enableKeyRotation: true,
       rotationPeriod: cdk.Duration.days(90),
@@ -126,7 +126,7 @@ export class AwsOwAuroraPgvectorServerlessStack extends cdk.Stack {
         }),
       ],
       storageEncrypted: true,
-      storageEncryptionKey: auroraKmsKey,
+      storageEncryptionKey: auroraStorageEncryptionKmsKey,
       credentials: rds.Credentials.fromPassword(props.rdsUsername, SecretValue.unsafePlainText(props.rdsPassword)),
       removalPolicy,
       iamAuthentication: true,
@@ -207,16 +207,16 @@ export class AwsOwAuroraPgvectorServerlessStack extends cdk.Stack {
       exportName: `${props.resourcePrefix}-aurora-pgvector-serverless-security-group-id`,
     });
 
-    new cdk.CfnOutput(this, `${props.resourcePrefix}-aurora-pgvector-serverless-kms-key-id`, {
-      value: auroraKmsKey.keyId,
-      description: 'Aurora KMS Key ID',
-      exportName: `${props.resourcePrefix}-aurora-pgvector-serverless-kms-key-id`,
+    new cdk.CfnOutput(this, `${props.resourcePrefix}-aurora-pgvector-serverless-storage-encryption-kms-key-id`, {
+      value: auroraStorageEncryptionKmsKey.keyId,
+      description: 'Aurora Storage Encryption KMS Key ID',
+      exportName: `${props.resourcePrefix}-aurora-pgvector-serverless-storage-encryption-kms-key-id`,
     });
 
-    new cdk.CfnOutput(this, `${props.resourcePrefix}-aurora-pgvector-serverless-kms-key-arn`, {
-      value: auroraKmsKey.keyArn,
-      description: 'Aurora KMS Key ARN',
-      exportName: `${props.resourcePrefix}-aurora-pgvector-serverless-kms-key-arn`,
+    new cdk.CfnOutput(this, `${props.resourcePrefix}-aurora-pgvector-serverless-storage-encryption-kms-key-arn`, {
+      value: auroraStorageEncryptionKmsKey.keyArn,
+      description: 'Aurora Storage Encryption KMS Key ARN',
+      exportName: `${props.resourcePrefix}-aurora-pgvector-serverless-storage-encryption-kms-key-arn`,
     });
 
     new cdk.CfnOutput(this, `${props.resourcePrefix}-aurora-pgvector-serverless-port`, {
