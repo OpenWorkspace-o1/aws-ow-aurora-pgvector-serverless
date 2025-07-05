@@ -1,0 +1,6 @@
+boto3
+pgvector==0.4.1
+aws-lambda-powertools==3.16.0
+SQLAlchemy==2.0.41
+psycopg[binary,pool]==3.2.9
+asyncpg==0.30.0
